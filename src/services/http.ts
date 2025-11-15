@@ -122,6 +122,16 @@ export async function http<T>(path: string, init: HttpInit = {}): Promise<T> {
 
   const url = absoluteUrl(`${BASE}${path}`);
 
+  // 서버 사이드 디버깅 로그
+  if (typeof window === 'undefined') {
+    console.log('[http] Server-side request:', {
+      path: `${BASE}${path}`,
+      absoluteUrl: url,
+      hasAuth: !!headers['Authorization'],
+      skipAuth: init.skipAuth,
+    });
+  }
+
   let res: Response | null = null;
   try {
     res = await fetch(url, {
@@ -129,8 +139,15 @@ export async function http<T>(path: string, init: HttpInit = {}): Promise<T> {
       headers,
       cache: init.cache ?? 'no-store',
     });
-  } catch {
-    throw new Error('네트워크 오류가 발생했습니다.');
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : '네트워크 오류가 발생했습니다.';
+    if (typeof window === 'undefined') {
+      console.error('[http] Fetch error:', {
+        url,
+        error: errorMsg,
+      });
+    }
+    throw new Error(errorMsg);
   }
 
   // 401 → 한 번만 리프레시 & 재시도
@@ -152,7 +169,18 @@ export async function http<T>(path: string, init: HttpInit = {}): Promise<T> {
     }
   }
 
-  if (!res.ok) throw await toErr(res);
+  if (!res.ok) {
+    const error = await toErr(res);
+    if (typeof window === 'undefined') {
+      console.error('[http] Response error:', {
+        url,
+        status: res.status,
+        statusText: res.statusText,
+        error: error.message,
+      });
+    }
+    throw error;
+  }
   return safeJson<T>(res);
 }
 
